@@ -467,7 +467,7 @@ async fn handle_ldk_events(
 	}
 }
 
-async fn start_ldk() {
+pub async fn start_ldk() {
 	let args = match args::parse_startup_args() {
 		Ok(user_args) => user_args,
 		Err(()) => return,
@@ -911,7 +911,6 @@ async fn start_ldk() {
 	// some public channels.
 	let peer_man = Arc::clone(&peer_manager);
 	let chan_man = Arc::clone(&channel_manager);
-	let network = args.network;
 	tokio::spawn(async move {
 		// First wait a minute until we have some peers and maybe have opened a channel.
 		tokio::time::sleep(Duration::from_secs(60)).await;
@@ -942,32 +941,11 @@ async fn start_ldk() {
 		Arc::clone(&channel_manager),
 	));
 
-	// Start the CLI.
-	let cli_channel_manager = Arc::clone(&channel_manager);
-	let cli_persister = Arc::clone(&persister);
-	let cli_logger = Arc::clone(&logger);
-	let cli_peer_manager = Arc::clone(&peer_manager);
-	let cli_poll = tokio::task::spawn_blocking(move || {
-		cli::poll_for_user_input(
-			cli_peer_manager,
-			cli_channel_manager,
-			keys_manager,
-			network_graph,
-			onion_messenger,
-			inbound_payments,
-			outbound_payments,
-			ldk_data_dir,
-			network,
-			cli_logger,
-			cli_persister,
-		)
-	});
-
 	// Exit if either CLI polling exits or the background processor exits (which shouldn't happen
 	// unless we fail to write to the filesystem).
+        #[allow(unused_assignments)]
 	let mut bg_res = Ok(Ok(()));
 	tokio::select! {
-		_ = cli_poll => {},
 		bg_exit = &mut background_processor => {
 			bg_res = bg_exit;
 		},
@@ -998,32 +976,4 @@ async fn start_ldk() {
 		bp_exit.send(()).unwrap();
 		background_processor.await.unwrap().unwrap();
 	}
-}
-
-#[tokio::main]
-pub async fn main() {
-	#[cfg(not(target_os = "windows"))]
-	{
-		// Catch Ctrl-C with a dummy signal handler.
-		unsafe {
-			let mut new_action: libc::sigaction = core::mem::zeroed();
-			let mut old_action: libc::sigaction = core::mem::zeroed();
-
-			extern "C" fn dummy_handler(
-				_: libc::c_int, _: *const libc::siginfo_t, _: *const libc::c_void,
-			) {
-			}
-
-			new_action.sa_sigaction = dummy_handler as libc::sighandler_t;
-			new_action.sa_flags = libc::SA_SIGINFO;
-
-			libc::sigaction(
-				libc::SIGINT,
-				&new_action as *const libc::sigaction,
-				&mut old_action as *mut libc::sigaction,
-			);
-		}
-	}
-
-	start_ldk().await;
 }
