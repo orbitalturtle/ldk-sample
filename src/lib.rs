@@ -5,6 +5,7 @@ mod config;
 mod convert;
 mod disk;
 mod hex_utils;
+pub mod node_api;
 mod peer_utils;
 mod sweep;
 
@@ -469,8 +470,10 @@ async fn handle_ldk_events(
 	}
 }
 
-pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
+pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
         let (ldk_data_dir, _ldk_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(test_name);
+        let ldk_addr = args.ldk_announced_listen_addr.clone();
+        let ldk_announced_node_name = args.ldk_announced_node_name.clone();
 
 	// ## Setup
 	// Step 1: Initialize the Logger
@@ -489,8 +492,7 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 	{
 		Ok(client) => Arc::new(client),
 		Err(e) => {
-			println!("Failed to connect to bitcoind client: {}", e);
-			return;
+                        panic!("Failed to connect to bitcoind client: {}", e);
 		}
 	};
 
@@ -503,11 +505,10 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 			bitcoin::Network::Regtest => "regtest",
 			bitcoin::Network::Signet => "signet",
 		} {
-		println!(
-			"Chain argument ({}) didn't match bitcoind chain ({})",
-			args.network, bitcoind_chain
-		);
-		return;
+                panic!(
+                        "Chain argument ({}) didn't match bitcoind chain ({})",
+                        args.network, bitcoind_chain
+                );
 	}
 
 	// Step 2: Initialize the FeeEstimator
@@ -552,8 +553,10 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 				f.sync_all().expect("Failed to sync node keys seed to disk");
 			}
 			Err(e) => {
-				println!("ERROR: Unable to create keys seed file {}: {}", keys_seed_path, e);
-				return;
+                                panic!(
+                                        "ERROR: Unable to create keys seed file {}: {}",
+                                        keys_seed_path, e
+                                );
 			}
 		}
 		key
@@ -618,7 +621,7 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				router,
+				router.clone(),
 				logger.clone(),
 				user_config,
 				channel_monitor_mut_references,
@@ -636,7 +639,7 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				router,
+				router.clone(),
 				logger.clone(),
 				keys_manager.clone(),
 				keys_manager.clone(),
@@ -842,7 +845,7 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 
 	// Step 20: Background Processing
 	let (bp_exit, bp_exit_check) = tokio::sync::watch::channel(());
-	let mut background_processor = tokio::spawn(process_events_async(
+	let background_processor = tokio::spawn(process_events_async(
 		Arc::clone(&persister),
 		event_handler,
 		chain_monitor.clone(),
@@ -920,8 +923,8 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 			if chan_man.list_channels().iter().any(|chan| chan.is_public) {
 				peer_man.broadcast_node_announcement(
 					[0; 3],
-					args.ldk_announced_node_name,
-					args.ldk_announced_listen_addr.clone(),
+					ldk_announced_node_name,
+					ldk_addr.clone(),
 				);
 			}
 		}
@@ -936,39 +939,22 @@ pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) {
 		Arc::clone(&channel_manager),
 	));
 
-	// Exit if either CLI polling exits or the background processor exits (which shouldn't happen
-	// unless we fail to write to the filesystem).
-        #[allow(unused_assignments)]
-	let mut bg_res = Ok(Ok(()));
-	tokio::select! {
-		bg_exit = &mut background_processor => {
-			bg_res = bg_exit;
-		},
-	}
-
-	// Disconnect our peers and stop accepting new connections. This ensures we don't continue
-	// updating our channel data after we've stopped the background processor.
-	stop_listen_connect.store(true, Ordering::Release);
-	peer_manager.disconnect_all_peers();
-
-	if let Err(e) = bg_res {
-		let persist_res = persister.persist("manager", &*channel_manager).unwrap();
-		use lightning::util::logger::Logger;
-		lightning::log_error!(
-			&*logger,
-			"Last-ditch ChannelManager persistence result: {:?}",
-			persist_res
-		);
-		panic!(
-			"ERR: background processing stopped with result {:?}, exiting.\n\
-			Last-ditch ChannelManager persistence result {:?}",
-			e, persist_res
-		);
-	}
-
-	// Stop the background processor.
-	if !bp_exit.is_closed() {
-		bp_exit.send(()).unwrap();
-		background_processor.await.unwrap().unwrap();
-	}
+        return node_api::Node {
+                logger,
+                bitcoind_client,
+                persister,
+                chain_monitor,
+                keys_manager,
+                network_graph,
+                router,
+                scorer,
+                channel_manager,
+                gossip_sync,
+                onion_messenger,
+                peer_manager,
+                bp_exit,
+                background_processor,
+                stop_listen_connect,
+                listening_port: args.ldk_peer_listening_port.clone(),
+       };
 }
