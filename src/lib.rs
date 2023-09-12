@@ -1,9 +1,10 @@
 mod args;
 pub mod bitcoind_client;
-mod cli;
+mod config;
 mod convert;
 mod disk;
 mod hex_utils;
+mod peer_utils;
 mod sweep;
 
 use crate::bitcoind_client::BitcoindClient;
@@ -892,7 +893,7 @@ pub async fn start_ldk() {
 						}
 						for (pubkey, peer_addr) in info.iter() {
 							if *pubkey == node_id {
-								let _ = cli::do_connect_peer(
+								let _ = peer_utils::do_connect_peer(
 									*pubkey,
 									peer_addr.clone(),
 									Arc::clone(&connect_pm),
