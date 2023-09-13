@@ -1,9 +1,12 @@
-mod args;
+#![allow(dead_code)]
+
 pub mod bitcoind_client;
-mod cli;
+mod config;
 mod convert;
 mod disk;
 mod hex_utils;
+pub mod node_api;
+mod peer_utils;
 mod sweep;
 
 use crate::bitcoind_client::BitcoindClient;
@@ -467,19 +470,14 @@ async fn handle_ldk_events(
 	}
 }
 
-async fn start_ldk() {
-	let args = match args::parse_startup_args() {
-		Ok(user_args) => user_args,
-		Err(()) => return,
-	};
-
-	// Initialize the LDK data directory if necessary.
-	let ldk_data_dir = format!("{}/.ldk", args.ldk_storage_dir_path);
-	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
+pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
+        let (ldk_data_dir, _ldk_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(test_name);
+        let ldk_addr = args.ldk_announced_listen_addr.clone();
+        let ldk_announced_node_name = args.ldk_announced_node_name.clone();
 
 	// ## Setup
 	// Step 1: Initialize the Logger
-	let logger = Arc::new(FilesystemLogger::new(ldk_data_dir.clone()));
+	let logger = Arc::new(FilesystemLogger::new(ldk_log_dir.clone()));
 
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
@@ -494,8 +492,7 @@ async fn start_ldk() {
 	{
 		Ok(client) => Arc::new(client),
 		Err(e) => {
-			println!("Failed to connect to bitcoind client: {}", e);
-			return;
+                        panic!("Failed to connect to bitcoind client: {}", e);
 		}
 	};
 
@@ -508,11 +505,10 @@ async fn start_ldk() {
 			bitcoin::Network::Regtest => "regtest",
 			bitcoin::Network::Signet => "signet",
 		} {
-		println!(
-			"Chain argument ({}) didn't match bitcoind chain ({})",
-			args.network, bitcoind_chain
-		);
-		return;
+                panic!(
+                        "Chain argument ({}) didn't match bitcoind chain ({})",
+                        args.network, bitcoind_chain
+                );
 	}
 
 	// Step 2: Initialize the FeeEstimator
@@ -557,8 +553,10 @@ async fn start_ldk() {
 				f.sync_all().expect("Failed to sync node keys seed to disk");
 			}
 			Err(e) => {
-				println!("ERROR: Unable to create keys seed file {}: {}", keys_seed_path, e);
-				return;
+                                panic!(
+                                        "ERROR: Unable to create keys seed file {}: {}",
+                                        keys_seed_path, e
+                                );
 			}
 		}
 		key
@@ -623,7 +621,7 @@ async fn start_ldk() {
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				router,
+				router.clone(),
 				logger.clone(),
 				user_config,
 				channel_monitor_mut_references,
@@ -641,7 +639,7 @@ async fn start_ldk() {
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				router,
+				router.clone(),
 				logger.clone(),
 				keys_manager.clone(),
 				keys_manager.clone(),
@@ -847,7 +845,7 @@ async fn start_ldk() {
 
 	// Step 20: Background Processing
 	let (bp_exit, bp_exit_check) = tokio::sync::watch::channel(());
-	let mut background_processor = tokio::spawn(process_events_async(
+	let background_processor = tokio::spawn(process_events_async(
 		Arc::clone(&persister),
 		event_handler,
 		chain_monitor.clone(),
@@ -892,7 +890,7 @@ async fn start_ldk() {
 						}
 						for (pubkey, peer_addr) in info.iter() {
 							if *pubkey == node_id {
-								let _ = cli::do_connect_peer(
+								let _ = peer_utils::do_connect_peer(
 									*pubkey,
 									peer_addr.clone(),
 									Arc::clone(&connect_pm),
@@ -911,7 +909,6 @@ async fn start_ldk() {
 	// some public channels.
 	let peer_man = Arc::clone(&peer_manager);
 	let chan_man = Arc::clone(&channel_manager);
-	let network = args.network;
 	tokio::spawn(async move {
 		// First wait a minute until we have some peers and maybe have opened a channel.
 		tokio::time::sleep(Duration::from_secs(60)).await;
@@ -926,8 +923,8 @@ async fn start_ldk() {
 			if chan_man.list_channels().iter().any(|chan| chan.is_public) {
 				peer_man.broadcast_node_announcement(
 					[0; 3],
-					args.ldk_announced_node_name,
-					args.ldk_announced_listen_addr.clone(),
+					ldk_announced_node_name,
+					ldk_addr.clone(),
 				);
 			}
 		}
@@ -942,88 +939,22 @@ async fn start_ldk() {
 		Arc::clone(&channel_manager),
 	));
 
-	// Start the CLI.
-	let cli_channel_manager = Arc::clone(&channel_manager);
-	let cli_persister = Arc::clone(&persister);
-	let cli_logger = Arc::clone(&logger);
-	let cli_peer_manager = Arc::clone(&peer_manager);
-	let cli_poll = tokio::task::spawn_blocking(move || {
-		cli::poll_for_user_input(
-			cli_peer_manager,
-			cli_channel_manager,
-			keys_manager,
-			network_graph,
-			onion_messenger,
-			inbound_payments,
-			outbound_payments,
-			ldk_data_dir,
-			network,
-			cli_logger,
-			cli_persister,
-		)
-	});
-
-	// Exit if either CLI polling exits or the background processor exits (which shouldn't happen
-	// unless we fail to write to the filesystem).
-	let mut bg_res = Ok(Ok(()));
-	tokio::select! {
-		_ = cli_poll => {},
-		bg_exit = &mut background_processor => {
-			bg_res = bg_exit;
-		},
-	}
-
-	// Disconnect our peers and stop accepting new connections. This ensures we don't continue
-	// updating our channel data after we've stopped the background processor.
-	stop_listen_connect.store(true, Ordering::Release);
-	peer_manager.disconnect_all_peers();
-
-	if let Err(e) = bg_res {
-		let persist_res = persister.persist("manager", &*channel_manager).unwrap();
-		use lightning::util::logger::Logger;
-		lightning::log_error!(
-			&*logger,
-			"Last-ditch ChannelManager persistence result: {:?}",
-			persist_res
-		);
-		panic!(
-			"ERR: background processing stopped with result {:?}, exiting.\n\
-			Last-ditch ChannelManager persistence result {:?}",
-			e, persist_res
-		);
-	}
-
-	// Stop the background processor.
-	if !bp_exit.is_closed() {
-		bp_exit.send(()).unwrap();
-		background_processor.await.unwrap().unwrap();
-	}
-}
-
-#[tokio::main]
-pub async fn main() {
-	#[cfg(not(target_os = "windows"))]
-	{
-		// Catch Ctrl-C with a dummy signal handler.
-		unsafe {
-			let mut new_action: libc::sigaction = core::mem::zeroed();
-			let mut old_action: libc::sigaction = core::mem::zeroed();
-
-			extern "C" fn dummy_handler(
-				_: libc::c_int, _: *const libc::siginfo_t, _: *const libc::c_void,
-			) {
-			}
-
-			new_action.sa_sigaction = dummy_handler as libc::sighandler_t;
-			new_action.sa_flags = libc::SA_SIGINFO;
-
-			libc::sigaction(
-				libc::SIGINT,
-				&new_action as *const libc::sigaction,
-				&mut old_action as *mut libc::sigaction,
-			);
-		}
-	}
-
-	start_ldk().await;
+        return node_api::Node {
+                logger,
+                bitcoind_client,
+                persister,
+                chain_monitor,
+                keys_manager,
+                network_graph,
+                router,
+                scorer,
+                channel_manager,
+                gossip_sync,
+                onion_messenger,
+                peer_manager,
+                bp_exit,
+                background_processor,
+                stop_listen_connect,
+                listening_port: args.ldk_peer_listening_port.clone(),
+       };
 }

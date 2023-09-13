@@ -1,4 +1,4 @@
-use crate::{cli, NetworkGraph, PaymentInfoStorage};
+use crate::{peer_utils, NetworkGraph, PaymentInfoStorage};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::Network;
 use chrono::Utc;
@@ -17,13 +17,12 @@ pub(crate) const INBOUND_PAYMENTS_FNAME: &str = "inbound_payments";
 pub(crate) const OUTBOUND_PAYMENTS_FNAME: &str = "outbound_payments";
 
 pub(crate) struct FilesystemLogger {
-	data_dir: String,
+	logs_dir: String,
 }
 impl FilesystemLogger {
-	pub(crate) fn new(data_dir: String) -> Self {
-		let logs_path = format!("{}/logs", data_dir);
-		fs::create_dir_all(logs_path.clone()).unwrap();
-		Self { data_dir: logs_path }
+        pub(crate) fn new(logs_dir: String) -> Self {
+                fs::create_dir_all(logs_dir.clone()).unwrap();
+                Self { logs_dir: logs_dir }
 	}
 }
 impl Logger for FilesystemLogger {
@@ -40,7 +39,7 @@ impl Logger for FilesystemLogger {
 			record.line,
 			raw_log
 		);
-		let logs_file_path = format!("{}/logs.txt", self.data_dir.clone());
+		let logs_file_path = format!("{}/logs.txt", self.logs_dir.clone());
 		fs::OpenOptions::new()
 			.create(true)
 			.append(true)
@@ -50,6 +49,7 @@ impl Logger for FilesystemLogger {
 			.unwrap();
 	}
 }
+#[allow(dead_code)]
 pub(crate) fn persist_channel_peer(path: &Path, peer_info: &str) -> std::io::Result<()> {
 	let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
 	file.write_all(format!("{}\n", peer_info).as_bytes())
@@ -65,7 +65,7 @@ pub(crate) fn read_channel_peer_data(
 	let file = File::open(path)?;
 	let reader = BufReader::new(file);
 	for line in reader.lines() {
-		match cli::parse_peer_info(line.unwrap()) {
+		match peer_utils::parse_peer_info(line.unwrap()) {
 			Ok((pubkey, socket_addr)) => {
 				peer_data.insert(pubkey, socket_addr);
 			}
