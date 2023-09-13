@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 pub mod bitcoind_client;
-mod config;
+pub mod config;
 mod convert;
 mod disk;
 mod hex_utils;
@@ -470,7 +470,7 @@ async fn handle_ldk_events(
 	}
 }
 
-pub(crate) async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
+pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
         let (ldk_data_dir, _ldk_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(test_name);
         let ldk_addr = args.ldk_announced_listen_addr.clone();
         let ldk_announced_node_name = args.ldk_announced_node_name.clone();
