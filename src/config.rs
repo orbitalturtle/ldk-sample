@@ -4,15 +4,15 @@ use lightning::ln::msgs::NetAddress;
 use std::{env, fs};
 use tempfile::{Builder, TempDir};
 
-pub(crate) struct LdkUserInfo {
-	pub(crate) bitcoind_rpc_username: String,
-	pub(crate) bitcoind_rpc_password: String,
-	pub(crate) bitcoind_rpc_port: u16,
-	pub(crate) bitcoind_rpc_host: String,
-	pub(crate) ldk_peer_listening_port: u16,
-	pub(crate) ldk_announced_listen_addr: Vec<NetAddress>,
-	pub(crate) ldk_announced_node_name: [u8; 32],
-	pub(crate) network: Network,
+pub struct LdkUserInfo {
+	pub bitcoind_rpc_username: String,
+	pub bitcoind_rpc_password: String,
+	pub bitcoind_rpc_port: u16,
+	pub bitcoind_rpc_host: String,
+	pub ldk_peer_listening_port: u16,
+	pub ldk_announced_listen_addr: Vec<NetAddress>,
+	pub ldk_announced_node_name: [u8; 32],
+	pub network: Network,
 }
 
 
