@@ -471,7 +471,7 @@ async fn handle_ldk_events(
 }
 
 pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
-        let (ldk_data_dir, _ldk_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(test_name);
+        let (ldk_data_dir, ldk_data_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(args.ldk_data_dir, test_name);
         let ldk_addr = args.ldk_announced_listen_addr.clone();
         let ldk_announced_node_name = args.ldk_announced_node_name.clone();
 
@@ -956,5 +956,6 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
                 background_processor,
                 stop_listen_connect,
                 listening_port: args.ldk_peer_listening_port.clone(),
+                ldk_data_dir: ldk_data_dir_binding,
        };
 }
