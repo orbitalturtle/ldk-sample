@@ -16,6 +16,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use tempfile::TempDir;
 use tokio::sync::watch::Sender;
 
 pub(crate) type Router = DefaultRouter<
@@ -69,6 +70,7 @@ pub struct Node {
 
     // Config values
     pub(crate) listening_port: u16,
+    pub(crate) ldk_data_dir: TempDir,
 }
 
 impl Node {
