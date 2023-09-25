@@ -6,6 +6,7 @@ mod convert;
 mod disk;
 mod hex_utils;
 pub mod node_api;
+mod onion;
 mod peer_utils;
 mod sweep;
 
