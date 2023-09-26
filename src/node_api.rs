@@ -1,7 +1,7 @@
 use crate::disk::FilesystemLogger;
-use crate::onion::UserOnionMessageContents;
+use crate::onion::{OnionMessageHandler, UserOnionMessageContents};
 use crate::{
-    BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessenger, PeerManager,
+    BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType, PeerManagerType,
 };
 
 use bitcoin::secp256k1::PublicKey;
@@ -43,8 +43,9 @@ pub struct Node {
     pub(crate) scorer: Arc<Mutex<Scorer>>,
     pub(crate) channel_manager: Arc<ChannelManager>,
     pub(crate) gossip_sync: Arc<P2PGossipSyncType>,
-    pub(crate) onion_messenger: Arc<OnionMessenger>,
-    pub(crate) peer_manager: Arc<PeerManager>,
+    pub(crate) onion_messenger: Arc<OnionMessengerType>,
+    pub(crate) onion_message_handler: Arc<OnionMessageHandler>,
+    pub(crate) peer_manager: Arc<PeerManagerType>,
     pub(crate) bp_exit: Sender<()>,
     pub(crate) background_processor: tokio::task::JoinHandle<Result<(), std::io::Error>>,
     pub(crate) stop_listen_connect: Arc<AtomicBool>,

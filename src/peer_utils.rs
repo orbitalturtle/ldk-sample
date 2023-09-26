@@ -1,11 +1,11 @@
-use crate::{hex_utils, PeerManager};
+use crate::{hex_utils, PeerManagerType};
 use bitcoin::secp256k1::PublicKey;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::Duration;
 
 pub(crate) async fn do_connect_peer(
-        pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>,
+        pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManagerType>,
 ) -> Result<(), ()> {
         match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
         {
