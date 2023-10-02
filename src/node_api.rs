@@ -44,7 +44,7 @@ pub struct Node {
 	pub(crate) channel_manager: Arc<ChannelManager>,
 	pub(crate) gossip_sync: Arc<P2PGossipSyncType>,
 	pub(crate) onion_messenger: Arc<OnionMessengerType>,
-	pub(crate) onion_message_handler: Arc<OnionMessageHandler>,
+	pub onion_message_handler: Arc<OnionMessageHandler>,
 	pub(crate) peer_manager: Arc<PeerManagerType>,
 	pub(crate) bp_exit: Sender<()>,
 	pub(crate) background_processor: tokio::task::JoinHandle<Result<(), std::io::Error>>,

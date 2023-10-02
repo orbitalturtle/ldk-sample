@@ -5,10 +5,10 @@ use lightning::util::ser::{Writeable, Writer};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone)]
-pub(crate) struct UserOnionMessageContents {
-	pub(crate) tlv_type: u64,
-	pub(crate) data: Vec<u8>,
+#[derive(Clone, Debug)]
+pub struct UserOnionMessageContents {
+	pub tlv_type: u64,
+	pub data: Vec<u8>,
 }
 
 impl CustomOnionMessageContents for UserOnionMessageContents {
@@ -25,8 +25,8 @@ impl Writeable for UserOnionMessageContents {
 
 // An extremely basic message handler needed for our integration tests.
 #[derive(Clone)]
-pub(crate) struct OnionMessageHandler {
-	pub(crate) messages: Arc<Mutex<VecDeque<UserOnionMessageContents>>>,
+pub struct OnionMessageHandler {
+	pub messages: Arc<Mutex<VecDeque<UserOnionMessageContents>>>,
 }
 
 impl CustomOnionMessageHandler for OnionMessageHandler {
@@ -39,8 +39,10 @@ impl CustomOnionMessageHandler for OnionMessageHandler {
 	}
 
 	fn read_custom_message<R: Read>(
-		&self, _message_type: u64, _buffer: &mut R,
+		&self, message_type: u64, buffer: &mut R,
 	) -> Result<Option<Self::CustomMessage>, DecodeError> {
-		unimplemented!();
+		let mut buf = vec![];
+		let _ = buffer.read_to_end(&mut buf);
+		Ok(Some(UserOnionMessageContents { tlv_type: message_type, data: buf.to_vec() }))
 	}
 }
