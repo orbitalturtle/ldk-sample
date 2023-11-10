@@ -6,11 +6,14 @@ mod convert;
 mod disk;
 mod hex_utils;
 pub mod node_api;
+mod onion;
 mod peer_utils;
 mod sweep;
 
 use crate::bitcoind_client::BitcoindClient;
 use crate::disk::FilesystemLogger;
+use crate::node_api::P2PGossipSyncType;
+use crate::onion::OnionMessageHandler;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode;
 use bitcoin::network::constants::Network;
@@ -26,9 +29,9 @@ use lightning::ln::channelmanager::{
 	ChainParameters, ChannelManagerReadArgs, SimpleArcChannelManager,
 };
 use lightning::ln::msgs::DecodeError;
-use lightning::ln::peer_handler::{IgnoringMessageHandler, MessageHandler, SimpleArcPeerManager};
+use lightning::ln::peer_handler::{IgnoringMessageHandler, MessageHandler, PeerManager};
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::onion_message::{DefaultMessageRouter, SimpleArcOnionMessenger};
+use lightning::onion_message::{DefaultMessageRouter, OnionMessenger};
 use lightning::routing::gossip;
 use lightning::routing::gossip::{NodeId, P2PGossipSync};
 use lightning::routing::router::DefaultRouter;
@@ -47,7 +50,7 @@ use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use rand::{thread_rng, Rng};
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::fmt;
 use std::fs;
@@ -129,13 +132,14 @@ type ChainMonitor = chainmonitor::ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager = SimpleArcPeerManager<
+pub(crate) type PeerManagerType = PeerManager<
 	SocketDescriptor,
-	ChainMonitor,
-	BitcoindClient,
-	BitcoindClient,
-	BitcoindClient,
-	FilesystemLogger,
+	Arc<ChannelManager>,
+	Arc<P2PGossipSyncType>,
+	Arc<OnionMessengerType>,
+	Arc<FilesystemLogger>,
+	IgnoringMessageHandler,
+	Arc<KeysManager>,
 >;
 
 pub(crate) type ChannelManager =
@@ -143,7 +147,14 @@ pub(crate) type ChannelManager =
 
 pub(crate) type NetworkGraph = gossip::NetworkGraph<Arc<FilesystemLogger>>;
 
-type OnionMessenger = SimpleArcOnionMessenger<FilesystemLogger>;
+pub(crate) type OnionMessengerType = OnionMessenger<
+	Arc<KeysManager>,
+	Arc<KeysManager>,
+	Arc<FilesystemLogger>,
+	Arc<DefaultMessageRouter>,
+	IgnoringMessageHandler,
+	Arc<OnionMessageHandler>,
+>;
 
 pub(crate) type BumpTxEventHandler = BumpTransactionEventHandler<
 	Arc<BitcoindClient>,
@@ -471,9 +482,10 @@ async fn handle_ldk_events(
 }
 
 pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::Node {
-        let (ldk_data_dir, ldk_data_dir_binding, ldk_log_dir) = config::setup_data_and_log_dirs(args.ldk_data_dir, test_name);
-        let ldk_addr = args.ldk_announced_listen_addr.clone();
-        let ldk_announced_node_name = args.ldk_announced_node_name.clone();
+	let (ldk_data_dir, ldk_data_dir_binding, ldk_log_dir) =
+		config::setup_data_and_log_dirs(args.ldk_data_dir, test_name);
+	let ldk_addr = args.ldk_announced_listen_addr.clone();
+	let ldk_announced_node_name = args.ldk_announced_node_name.clone();
 
 	// ## Setup
 	// Step 1: Initialize the Logger
@@ -492,7 +504,7 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 	{
 		Ok(client) => Arc::new(client),
 		Err(e) => {
-                        panic!("Failed to connect to bitcoind client: {}", e);
+			panic!("Failed to connect to bitcoind client: {}", e);
 		}
 	};
 
@@ -505,10 +517,10 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 			bitcoin::Network::Regtest => "regtest",
 			bitcoin::Network::Signet => "signet",
 		} {
-                panic!(
-                        "Chain argument ({}) didn't match bitcoind chain ({})",
-                        args.network, bitcoind_chain
-                );
+		panic!(
+			"Chain argument ({}) didn't match bitcoind chain ({})",
+			args.network, bitcoind_chain
+		);
 	}
 
 	// Step 2: Initialize the FeeEstimator
@@ -553,10 +565,7 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 				f.sync_all().expect("Failed to sync node keys seed to disk");
 			}
 			Err(e) => {
-                                panic!(
-                                        "ERROR: Unable to create keys seed file {}: {}",
-                                        keys_seed_path, e
-                                );
+				panic!("ERROR: Unable to create keys seed file {}: {}", keys_seed_path, e);
 			}
 		}
 		key
@@ -707,14 +716,16 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 	));
 
 	// Step 15: Initialize the PeerManager
+	let onion_message_handler =
+		Arc::new(OnionMessageHandler { messages: Arc::new(Mutex::new(VecDeque::new())) });
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
-	let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(
+	let onion_messenger: Arc<OnionMessengerType> = Arc::new(OnionMessenger::new(
 		Arc::clone(&keys_manager),
 		Arc::clone(&keys_manager),
 		Arc::clone(&logger),
 		Arc::new(DefaultMessageRouter {}),
 		IgnoringMessageHandler {},
-		IgnoringMessageHandler {},
+		Arc::clone(&onion_message_handler),
 	));
 	let mut ephemeral_bytes = [0; 32];
 	let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
@@ -725,7 +736,7 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 		onion_message_handler: onion_messenger.clone(),
 		custom_message_handler: IgnoringMessageHandler {},
 	};
-	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
+	let peer_manager: Arc<PeerManagerType> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		current_time.try_into().unwrap(),
 		&ephemeral_bytes,
@@ -878,7 +889,7 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 			interval.tick().await;
 			match disk::read_channel_peer_data(Path::new(&peer_data_path)) {
 				Ok(info) => {
-					let peers = connect_pm.get_peer_node_ids();
+					let peers = &connect_pm.get_peer_node_ids();
 					for node_id in connect_cm
 						.list_channels()
 						.iter()
@@ -939,23 +950,24 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 		Arc::clone(&channel_manager),
 	));
 
-        return node_api::Node {
-                logger,
-                bitcoind_client,
-                persister,
-                chain_monitor,
-                keys_manager,
-                network_graph,
-                router,
-                scorer,
-                channel_manager,
-                gossip_sync,
-                onion_messenger,
-                peer_manager,
-                bp_exit,
-                background_processor,
-                stop_listen_connect,
-                listening_port: args.ldk_peer_listening_port.clone(),
-                ldk_data_dir: ldk_data_dir_binding,
-       };
+	return node_api::Node {
+		logger,
+		bitcoind_client,
+		persister,
+		chain_monitor,
+		keys_manager,
+		network_graph,
+		router,
+		scorer,
+		channel_manager,
+		gossip_sync,
+		onion_messenger,
+		onion_message_handler,
+		peer_manager,
+		bp_exit,
+		background_processor,
+		stop_listen_connect,
+		listening_port: args.ldk_peer_listening_port.clone(),
+		ldk_data_dir: ldk_data_dir_binding,
+	};
 }

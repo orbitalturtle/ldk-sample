@@ -20,9 +20,9 @@ pub(crate) struct FilesystemLogger {
 	logs_dir: String,
 }
 impl FilesystemLogger {
-        pub(crate) fn new(logs_dir: String) -> Self {
-                fs::create_dir_all(logs_dir.clone()).unwrap();
-                Self { logs_dir: logs_dir }
+	pub(crate) fn new(logs_dir: String) -> Self {
+		fs::create_dir_all(logs_dir.clone()).unwrap();
+		Self { logs_dir }
 	}
 }
 impl Logger for FilesystemLogger {
