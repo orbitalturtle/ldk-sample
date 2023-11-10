@@ -5,8 +5,8 @@ use crate::{
 	P2PGossipSyncType, PeerManagerType,
 };
 
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::Network;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::blinded_path::BlindedPath;
 use lightning::offers::offer::{Offer, OfferBuilder, Quantity};
 use lightning::offers::parse::Bolt12SemanticError;

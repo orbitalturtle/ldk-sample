@@ -188,7 +188,7 @@ pub(crate) type OnionMessengerType = OnionMessenger<
 	Arc<KeysManager>,
 	Arc<FilesystemLogger>,
 	Arc<DefaultMessageRouter>,
-	IgnoringMessageHandler,
+	Arc<OnionMessageHandler>,
 	Arc<OnionMessageHandler>,
 >;
 
@@ -790,17 +790,20 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 		Arc::new(P2PGossipSync::new(Arc::clone(&network_graph), None, Arc::clone(&logger)));
 
 	// Step 15: Initialize the PeerManager
+	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let onion_message_handler = Arc::new(OnionMessageHandler {
 		messages: Arc::new(Mutex::new(VecDeque::new())),
 		logger: Arc::clone(&logger),
+		keys_manager: Arc::clone(&keys_manager),
+		channel_manager: channel_manager.clone(),
+		node_id: channel_manager.get_our_node_id(),
 	});
-	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let onion_messenger: Arc<OnionMessengerType> = Arc::new(OnionMessenger::new(
 		Arc::clone(&keys_manager),
 		Arc::clone(&keys_manager),
 		Arc::clone(&logger),
 		Arc::new(DefaultMessageRouter {}),
-		IgnoringMessageHandler {},
+		Arc::clone(&onion_message_handler),
 		Arc::clone(&onion_message_handler),
 	));
 	let mut ephemeral_bytes = [0; 32];
