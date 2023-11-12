@@ -1,5 +1,5 @@
 use bitcoin::network::constants::Network;
-use lightning::ln::msgs::NetAddress;
+use lightning::ln::msgs::SocketAddress;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::{Builder, TempDir};
@@ -11,7 +11,7 @@ pub struct LdkUserInfo {
 	pub bitcoind_rpc_host: String,
 	pub ldk_data_dir: PathBuf,
 	pub ldk_peer_listening_port: u16,
-	pub ldk_announced_listen_addr: Vec<NetAddress>,
+	pub ldk_announced_listen_addr: Vec<SocketAddress>,
 	pub ldk_announced_node_name: [u8; 32],
 	pub network: Network,
 }

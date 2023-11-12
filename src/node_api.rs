@@ -1,7 +1,7 @@
 use crate::disk::FilesystemLogger;
 use crate::onion::{OnionMessageHandler, UserOnionMessageContents};
 use crate::{
-	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType, PeerManagerType,
+	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType, PeerManagerType, P2PGossipSyncType,
 };
 
 use bitcoin::secp256k1::PublicKey;
@@ -9,10 +9,10 @@ use lightning::onion_message::{Destination, OnionMessageContents, OnionMessagePa
 use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
 use lightning::sign::KeysManager;
-use lightning_persister::FilesystemPersister;
+use lightning_persister::fs_store::FilesystemStore;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::watch::Sender;
@@ -20,27 +20,21 @@ use tokio::sync::watch::Sender;
 pub(crate) type Router = DefaultRouter<
 	Arc<NetworkGraph>,
 	Arc<FilesystemLogger>,
-	Arc<Mutex<Scorer>>,
+	Arc<RwLock<Scorer>>,
 	ProbabilisticScoringFeeParameters,
 	Scorer,
 >;
 pub(crate) type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
-pub(crate) type P2PGossipSyncType = lightning::routing::gossip::P2PGossipSync<
-	Arc<NetworkGraph>,
-	Arc<BitcoindClient>,
-	Arc<FilesystemLogger>,
->;
-
 pub struct Node {
 	pub(crate) logger: Arc<FilesystemLogger>,
 	pub(crate) bitcoind_client: Arc<BitcoindClient>,
-	pub(crate) persister: Arc<FilesystemPersister>,
+	pub(crate) persister: Arc<FilesystemStore>,
 	pub(crate) chain_monitor: Arc<ChainMonitor>,
 	pub(crate) keys_manager: Arc<KeysManager>,
 	pub(crate) network_graph: Arc<NetworkGraph>,
 	pub(crate) router: Arc<Router>,
-	pub(crate) scorer: Arc<Mutex<Scorer>>,
+	pub(crate) scorer: Arc<RwLock<Scorer>>,
 	pub(crate) channel_manager: Arc<ChannelManager>,
 	pub(crate) gossip_sync: Arc<P2PGossipSyncType>,
 	pub(crate) onion_messenger: Arc<OnionMessengerType>,
