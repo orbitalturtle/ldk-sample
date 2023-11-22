@@ -19,6 +19,7 @@ use bitcoin::network::constants::Network;
 use bitcoin::BlockHash;
 use bitcoin_bech32::WitnessProgram;
 use disk::{INBOUND_PAYMENTS_FNAME, OUTBOUND_PAYMENTS_FNAME};
+use lightning::log_info;
 use lightning::chain::{chainmonitor, ChannelMonitorUpdateStatus};
 use lightning::chain::{Filter, Watch};
 use lightning::events::bump_transaction::{BumpTransactionEventHandler, Wallet};
@@ -37,6 +38,7 @@ use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::ProbabilisticScoringFeeParameters;
 use lightning::sign::{EntropySource, InMemorySigner, KeysManager, SpendableOutputDescriptor};
 use lightning::util::config::UserConfig;
+use lightning::util::logger::Logger;
 use lightning::util::persist::{KVStore, MonitorUpdatingPersister};
 use lightning::util::ser::{Readable, ReadableArgs, Writeable, Writer};
 use lightning::{chain, impl_writeable_tlv_based, impl_writeable_tlv_based_enum};
@@ -159,7 +161,7 @@ pub(crate) type GossipVerifier = lightning_block_sync::gossip::GossipVerifier<
 
 pub(crate) type P2PGossipSyncType = lightning::routing::gossip::P2PGossipSync<
         Arc<NetworkGraph>,
-        GossipVerifier, // Arc<BitcoindClient>,
+        GossipVerifier,
         Arc<FilesystemLogger>,
 >;
 
@@ -186,7 +188,7 @@ pub(crate) type OnionMessengerType = OnionMessenger<
 	Arc<KeysManager>,
 	Arc<FilesystemLogger>,
 	Arc<DefaultMessageRouter>,
-	IgnoringMessageHandler,
+        IgnoringMessageHandler,
 	Arc<OnionMessageHandler>,
 >;
 
@@ -548,7 +550,8 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 
 	// ## Setup
 	// Step 1: Initialize the Logger
-	let logger = Arc::new(FilesystemLogger::new(ldk_log_dir.clone()));
+	let logger = Arc::new(FilesystemLogger::new(ldk_log_dir.clone(), args.log_level, args.node_num));
+	log_info!(logger, "LDK node is starting up.");
 
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
@@ -787,7 +790,7 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 
 	// Step 15: Initialize the PeerManager
 	let onion_message_handler =
-		Arc::new(OnionMessageHandler { messages: Arc::new(Mutex::new(VecDeque::new())) });
+		Arc::new(OnionMessageHandler { messages: Arc::new(Mutex::new(VecDeque::new())), logger: Arc::clone(&logger) });
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let onion_messenger: Arc<OnionMessengerType> = Arc::new(OnionMessenger::new(
 		Arc::clone(&keys_manager),

@@ -249,6 +249,7 @@ dependencies = [
  "lightning-net-tokio",
  "lightning-persister",
  "lightning-rapid-gossip-sync",
+ "log",
  "rand",
  "serde_json",
  "tempfile",

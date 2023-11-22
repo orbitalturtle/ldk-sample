@@ -1,5 +1,6 @@
 use bitcoin::network::constants::Network;
 use lightning::ln::msgs::SocketAddress;
+use lightning::util::logger::Level;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::{Builder, TempDir};
@@ -14,6 +15,8 @@ pub struct LdkUserInfo {
 	pub ldk_announced_listen_addr: Vec<SocketAddress>,
 	pub ldk_announced_node_name: [u8; 32],
 	pub network: Network,
+	pub log_level: Level,
+	pub node_num: u8,
 }
 
 // Here we initialize three layers of directories needed for our tests. We won't persist ldk data, but we'll persist
