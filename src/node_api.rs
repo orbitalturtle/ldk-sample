@@ -1,11 +1,12 @@
 use crate::disk::FilesystemLogger;
 use crate::onion::{OnionMessageHandler, UserOnionMessageContents};
 use crate::{
-	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType, PeerManagerType, P2PGossipSyncType,
+	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType,
+	P2PGossipSyncType, PeerManagerType,
 };
 
-use bitcoin::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::Network;
 use lightning::blinded_path::BlindedPath;
 use lightning::offers::offer::{Offer, OfferBuilder, Quantity};
 use lightning::offers::parse::Bolt12SemanticError;
@@ -156,7 +157,7 @@ impl Node {
 
 		OfferBuilder::new("testing offer".to_string(), pubkey)
 			.amount_msats(msats)
-                        .chain(network)
+			.chain(network)
 			.supported_quantity(quantity)
 			.absolute_expiry(expiration.duration_since(SystemTime::UNIX_EPOCH).unwrap())
 			.issuer("Foo Bar".to_string())

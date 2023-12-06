@@ -3,7 +3,7 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::Network;
 use chrono::Utc;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringDecayParameters};
-use lightning::util::logger::{Logger, Record, Level};
+use lightning::util::logger::{Level, Logger, Record};
 use lightning::util::ser::{Readable, ReadableArgs, Writer};
 use std::collections::HashMap;
 use std::fs;
@@ -18,13 +18,13 @@ pub(crate) const OUTBOUND_PAYMENTS_FNAME: &str = "outbound_payments";
 
 pub(crate) struct FilesystemLogger {
 	logs_dir: String,
-        level: Level,
-        // Specifies which ldk node this is in the integration tests.
-        node_num: u8,
+	level: Level,
+	// Specifies which ldk node this is in the integration tests.
+	node_num: u8,
 }
 impl FilesystemLogger {
 	pub(crate) fn new(logs_dir: String, level: Level, node_num: u8) -> Self {
-	fs::create_dir_all(logs_dir.clone()).unwrap();
+		fs::create_dir_all(logs_dir.clone()).unwrap();
 		Self { logs_dir, level, node_num }
 	}
 }

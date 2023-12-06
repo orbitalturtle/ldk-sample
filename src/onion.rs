@@ -1,8 +1,10 @@
 use crate::disk::FilesystemLogger;
-use lightning::log_info;
 use lightning::io::Read;
 use lightning::ln::msgs::DecodeError;
-use lightning::onion_message::{CustomOnionMessageHandler, OnionMessageContents, PendingOnionMessage};
+use lightning::log_info;
+use lightning::onion_message::{
+	CustomOnionMessageHandler, OnionMessageContents, PendingOnionMessage,
+};
 use lightning::util::logger::Logger;
 use lightning::util::ser::{Writeable, Writer};
 use std::collections::VecDeque;
@@ -50,7 +52,7 @@ impl CustomOnionMessageHandler for OnionMessageHandler {
 		Ok(Some(UserOnionMessageContents { tlv_type: message_type, data: buf.to_vec() }))
 	}
 
-        fn release_pending_custom_messages(&self) -> Vec<PendingOnionMessage<Self::CustomMessage>> {
+	fn release_pending_custom_messages(&self) -> Vec<PendingOnionMessage<Self::CustomMessage>> {
 		vec![]
-        }
+	}
 }
