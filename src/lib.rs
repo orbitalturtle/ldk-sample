@@ -370,8 +370,6 @@ async fn handle_ldk_events(
 					hex_utils::hex_str(&counterparty_node_id.serialize()),
 				);
 			}
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::PaymentPathSuccessful { .. } => {}
 		Event::PaymentPathFailed { .. } => {}
@@ -500,8 +498,6 @@ async fn handle_ldk_events(
 				channel_id,
 				hex_utils::hex_str(&counterparty_node_id.serialize()),
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::ChannelReady {
 			ref channel_id,
@@ -514,8 +510,6 @@ async fn handle_ldk_events(
 				channel_id,
 				hex_utils::hex_str(&counterparty_node_id.serialize()),
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::ChannelClosed {
 			channel_id,
@@ -530,8 +524,6 @@ async fn handle_ldk_events(
 				counterparty_node_id.map(|id| format!("{}", id)).unwrap_or("".to_owned()),
 				reason
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::DiscardFunding { .. } => {
 			// A "real" node should probably "lock" the UTXOs spent in funding transactions until

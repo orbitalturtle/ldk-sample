@@ -55,7 +55,7 @@ impl Logger for FilesystemLogger {
 			.unwrap();
 	}
 }
-#[allow(dead_code)]
+
 pub(crate) fn persist_channel_peer(path: &Path, peer_info: &str) -> std::io::Result<()> {
 	let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
 	file.write_all(format!("{}\n", peer_info).as_bytes())

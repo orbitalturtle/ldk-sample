@@ -1,21 +1,25 @@
-use crate::disk::FilesystemLogger;
+use crate::disk::{persist_channel_peer, FilesystemLogger};
 use crate::onion::{OnionMessageHandler, UserOnionMessageContents};
 use crate::{
 	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType,
 	P2PGossipSyncType, PeerManagerType,
 };
 
-use bitcoin::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::Network;
 use lightning::blinded_path::BlindedPath;
+use lightning::ln::ChannelId;
 use lightning::offers::offer::{Offer, OfferBuilder, Quantity};
 use lightning::offers::parse::Bolt12SemanticError;
 use lightning::onion_message::{Destination, OnionMessagePath};
 use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
 use lightning::sign::KeysManager;
+use lightning::util::config::{ChannelHandshakeConfig, ChannelHandshakeLimits, UserConfig};
+use lightning::util::errors::APIError;
 use lightning_persister::fs_store::FilesystemStore;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
@@ -115,6 +119,32 @@ impl Node {
 		}
 	}
 
+	pub async fn open_channel(
+		&self, peer_pubkey: PublicKey, peer_addr: SocketAddr, chan_amt_sat: u64, push_msat: u64,
+		announce_channel: bool,
+	) -> Result<ChannelId, APIError> {
+		if self.connect_to_peer(peer_pubkey, peer_addr).await.is_err() {
+			return Err(APIError::ChannelUnavailable { err: "Cannot connect to peer".to_string() });
+		};
+
+		let peer_pubkey_and_ip_addr = peer_pubkey.to_string() + "@" + &peer_addr.to_string();
+		match open_channel(
+			peer_pubkey,
+			chan_amt_sat,
+			push_msat,
+			announce_channel,
+			false, // Without anchors for simplicity.
+			self.channel_manager.clone(),
+		) {
+			Ok(channel_id) => {
+				let peer_data_path = format!("{:?}/channel_peer_data", self.ldk_data_dir);
+				let _ = persist_channel_peer(Path::new(&peer_data_path), &peer_pubkey_and_ip_addr);
+				Ok(channel_id)
+			}
+			Err(e) => Err(e),
+		}
+	}
+
 	pub async fn send_onion_message(
 		&self, mut intermediate_nodes: Vec<PublicKey>, tlv_type: u64, data: Vec<u8>,
 	) -> Result<(), ()> {
@@ -177,4 +207,21 @@ impl Node {
 			self.background_processor.await.unwrap().unwrap();
 		}
 	}
+}
+
+fn open_channel(
+	peer_pubkey: PublicKey, channel_amt_sat: u64, push_msat: u64, announced_channel: bool,
+	with_anchors: bool, channel_manager: Arc<ChannelManager>,
+) -> Result<ChannelId, APIError> {
+	let config = UserConfig {
+		channel_handshake_limits: ChannelHandshakeLimits { ..Default::default() },
+		channel_handshake_config: ChannelHandshakeConfig {
+			announced_channel,
+			negotiate_anchors_zero_fee_htlc_tx: with_anchors,
+			..Default::default()
+		},
+		..Default::default()
+	};
+
+	channel_manager.create_channel(peer_pubkey, channel_amt_sat, push_msat, 0, Some(config))
 }
