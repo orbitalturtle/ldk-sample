@@ -1,6 +1,11 @@
+use crate::disk::FilesystemLogger;
 use lightning::io::Read;
 use lightning::ln::msgs::DecodeError;
-use lightning::onion_message::{CustomOnionMessageHandler, OnionMessageContents, PendingOnionMessage};
+use lightning::log_info;
+use lightning::onion_message::{
+	CustomOnionMessageHandler, OnionMessageContents, PendingOnionMessage,
+};
+use lightning::util::logger::Logger;
 use lightning::util::ser::{Writeable, Writer};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -27,13 +32,14 @@ impl Writeable for UserOnionMessageContents {
 #[derive(Clone)]
 pub struct OnionMessageHandler {
 	pub messages: Arc<Mutex<VecDeque<UserOnionMessageContents>>>,
+	pub(crate) logger: Arc<FilesystemLogger>,
 }
 
 impl CustomOnionMessageHandler for OnionMessageHandler {
 	type CustomMessage = UserOnionMessageContents;
 
 	fn handle_custom_message(&self, msg: Self::CustomMessage) -> Option<UserOnionMessageContents> {
-		println!("Received a new custom message!");
+		log_info!(self.logger, "Received a new custom message!");
 		self.messages.lock().unwrap().push_back(msg.clone());
 		Some(msg)
 	}
@@ -46,7 +52,7 @@ impl CustomOnionMessageHandler for OnionMessageHandler {
 		Ok(Some(UserOnionMessageContents { tlv_type: message_type, data: buf.to_vec() }))
 	}
 
-        fn release_pending_custom_messages(&self) -> Vec<PendingOnionMessage<Self::CustomMessage>> {
+	fn release_pending_custom_messages(&self) -> Vec<PendingOnionMessage<Self::CustomMessage>> {
 		vec![]
-        }
+	}
 }

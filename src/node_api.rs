@@ -1,10 +1,15 @@
 use crate::disk::FilesystemLogger;
 use crate::onion::{OnionMessageHandler, UserOnionMessageContents};
 use crate::{
-	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType, PeerManagerType, P2PGossipSyncType,
+	BitcoindClient, ChainMonitor, ChannelManager, NetworkGraph, OnionMessengerType,
+	P2PGossipSyncType, PeerManagerType,
 };
 
-use bitcoin::secp256k1::PublicKey;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::Network;
+use lightning::blinded_path::BlindedPath;
+use lightning::offers::offer::{Offer, OfferBuilder, Quantity};
+use lightning::offers::parse::Bolt12SemanticError;
 use lightning::onion_message::{Destination, OnionMessagePath};
 use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
@@ -13,7 +18,7 @@ use lightning_persister::fs_store::FilesystemStore;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tempfile::TempDir;
 use tokio::sync::watch::Sender;
 
@@ -137,6 +142,27 @@ impl Node {
 				Ok(())
 			}
 		}
+	}
+
+	// Build an offer for receiving payments at this node. path_pubkeys lists the nodes the path will contain,
+	// starting with the introduction node and ending in the destination node (the current node).
+	pub async fn create_offer(
+		&self, path_pubkeys: &[PublicKey], network: Network, msats: u64, quantity: Quantity,
+		expiration: SystemTime,
+	) -> Result<Offer, Bolt12SemanticError> {
+		let secp_ctx = Secp256k1::new();
+		let path =
+			BlindedPath::new_for_message(path_pubkeys, &*self.keys_manager, &secp_ctx).unwrap();
+		let (pubkey, _) = self.get_node_info();
+
+		OfferBuilder::new("testing offer".to_string(), pubkey)
+			.amount_msats(msats)
+			.chain(network)
+			.supported_quantity(quantity)
+			.absolute_expiry(expiration.duration_since(SystemTime::UNIX_EPOCH).unwrap())
+			.issuer("Foo Bar".to_string())
+			.path(path)
+			.build()
 	}
 
 	pub async fn stop(self) {

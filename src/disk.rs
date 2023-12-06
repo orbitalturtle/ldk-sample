@@ -3,7 +3,7 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::Network;
 use chrono::Utc;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringDecayParameters};
-use lightning::util::logger::{Logger, Record};
+use lightning::util::logger::{Level, Logger, Record};
 use lightning::util::ser::{Readable, ReadableArgs, Writer};
 use std::collections::HashMap;
 use std::fs;
@@ -18,15 +18,21 @@ pub(crate) const OUTBOUND_PAYMENTS_FNAME: &str = "outbound_payments";
 
 pub(crate) struct FilesystemLogger {
 	logs_dir: String,
+	level: Level,
+	// Specifies which ldk node this is in the integration tests.
+	node_num: u8,
 }
 impl FilesystemLogger {
-	pub(crate) fn new(logs_dir: String) -> Self {
+	pub(crate) fn new(logs_dir: String, level: Level, node_num: u8) -> Self {
 		fs::create_dir_all(logs_dir.clone()).unwrap();
-		Self { logs_dir }
+		Self { logs_dir, level, node_num }
 	}
 }
 impl Logger for FilesystemLogger {
 	fn log(&self, record: &Record) {
+		if record.level < self.level {
+			return;
+		}
 		let raw_log = record.args.to_string();
 		let log = format!(
 			"{} {:<5} [{}:{}] {}\n",
@@ -39,7 +45,7 @@ impl Logger for FilesystemLogger {
 			record.line,
 			raw_log
 		);
-		let logs_file_path = format!("{}/logs.txt", self.logs_dir.clone());
+		let logs_file_path = format!("{}/logs-ldk{}.txt", self.logs_dir.clone(), self.node_num);
 		fs::OpenOptions::new()
 			.create(true)
 			.append(true)
