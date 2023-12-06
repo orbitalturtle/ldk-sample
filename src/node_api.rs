@@ -37,7 +37,7 @@ pub(crate) type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLo
 
 pub struct Node {
 	pub(crate) logger: Arc<FilesystemLogger>,
-	pub(crate) bitcoind_client: Arc<BitcoindClient>,
+	pub bitcoind_client: Arc<BitcoindClient>,
 	pub(crate) persister: Arc<FilesystemStore>,
 	pub(crate) chain_monitor: Arc<ChainMonitor>,
 	pub(crate) keys_manager: Arc<KeysManager>,
