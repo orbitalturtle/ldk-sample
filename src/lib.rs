@@ -188,7 +188,7 @@ pub(crate) type OnionMessengerType = OnionMessenger<
 	Arc<KeysManager>,
 	Arc<FilesystemLogger>,
 	Arc<DefaultMessageRouter>,
-	IgnoringMessageHandler,
+	Arc<OnionMessageHandler>,
 	Arc<OnionMessageHandler>,
 >;
 
@@ -370,8 +370,6 @@ async fn handle_ldk_events(
 					hex_utils::hex_str(&counterparty_node_id.serialize()),
 				);
 			}
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::PaymentPathSuccessful { .. } => {}
 		Event::PaymentPathFailed { .. } => {}
@@ -500,8 +498,6 @@ async fn handle_ldk_events(
 				channel_id,
 				hex_utils::hex_str(&counterparty_node_id.serialize()),
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::ChannelReady {
 			ref channel_id,
@@ -514,8 +510,6 @@ async fn handle_ldk_events(
 				channel_id,
 				hex_utils::hex_str(&counterparty_node_id.serialize()),
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::ChannelClosed {
 			channel_id,
@@ -530,8 +524,6 @@ async fn handle_ldk_events(
 				counterparty_node_id.map(|id| format!("{}", id)).unwrap_or("".to_owned()),
 				reason
 			);
-			print!("> ");
-			io::stdout().flush().unwrap();
 		}
 		Event::DiscardFunding { .. } => {
 			// A "real" node should probably "lock" the UTXOs spent in funding transactions until
@@ -790,17 +782,20 @@ pub async fn start_ldk(args: config::LdkUserInfo, test_name: &str) -> node_api::
 		Arc::new(P2PGossipSync::new(Arc::clone(&network_graph), None, Arc::clone(&logger)));
 
 	// Step 15: Initialize the PeerManager
+	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let onion_message_handler = Arc::new(OnionMessageHandler {
 		messages: Arc::new(Mutex::new(VecDeque::new())),
 		logger: Arc::clone(&logger),
+		keys_manager: Arc::clone(&keys_manager),
+		channel_manager: channel_manager.clone(),
+		node_id: channel_manager.get_our_node_id(),
 	});
-	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let onion_messenger: Arc<OnionMessengerType> = Arc::new(OnionMessenger::new(
 		Arc::clone(&keys_manager),
 		Arc::clone(&keys_manager),
 		Arc::clone(&logger),
 		Arc::new(DefaultMessageRouter {}),
-		IgnoringMessageHandler {},
+		Arc::clone(&onion_message_handler),
 		Arc::clone(&onion_message_handler),
 	));
 	let mut ephemeral_bytes = [0; 32];
